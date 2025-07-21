@@ -12,6 +12,9 @@ from diffusion_model import NP_DTYPE
 def chunker(seq, size):
     return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
+def round_base(x, base, decimal=1):
+    return base * np.round(x / base, decimal)
+
 
 def rgetattr(obj, attr, *args):
     def _getattr(obj, attr):

@@ -40,6 +40,7 @@ if FLAG_XLA:
 	tf.config.optimizer.set_jit(True)  # Enable XLA.
 
 # Set Home directory to base of the git repo
+HOME_DIR = os.path.expanduser('~')
 os.chdir(HOME_DIR)
 
 import networks as cl   # cl: Custom Layer
@@ -907,10 +908,7 @@ norm_diff_load_mean = {}
 for count_cp, cp in enumerate(make_png_period):
 	# Save csv file for metrics
 	# load norm_diff files for each checkpoint
-	if 'gan' in diff_model.name:
-		load_norm_diff_dir = os.path.join(save_model_dir, f'cp_{cp}', str_noise + '_mh_gan' * flag_mh_gan)
-	else:
-		load_norm_diff_dir = os.path.join(save_model_dir, f'cp_{cp}', str_noise)
+	load_norm_diff_dir = os.path.join(save_model_dir, f'cp_{cp}', str_noise)
 	norm_diff_load = pickle.load(open(os.path.join(load_norm_diff_dir, 'norm_diff.pik'), 'rb'))
 	if count_cp == 0:
 		norm_diff_load_mean.update({key: val for key, val in norm_diff_load.items() if '_mean' in key})
@@ -920,7 +918,7 @@ for count_cp, cp in enumerate(make_png_period):
 
 for count_i, (stat_i, var_i) in enumerate(itertools.product(['mu', 'std'], ['DVR', 'R1'])):
 	open_mode = 'wb' if count_i == 0 else 'ab'
-	with open(os.path.join(save_model_dir, gif_fold_name,
+	with open(os.path.join(save_model_dir,
 						   'norm_diff_avg_{}.csv'.format(str_noise)),
 			  open_mode) as file_pi:
 		np.savetxt(file_pi, norm_diff_load_mean[stat_i + '_' + var_i + '_mean'],
@@ -928,13 +926,13 @@ for count_i, (stat_i, var_i) in enumerate(itertools.product(['mu', 'std'], ['DVR
 						  format(make_png_period[0]) + ',' + ','.join(map(format, make_png_period[1:])),
 				   delimiter=',', fmt='%.2f')
 
-with open(os.path.join(save_model_dir, gif_fold_name,
+with open(os.path.join(save_model_dir,
 					   'norm_diff_avg_{}.pik'.format(str_noise)),'wb') as file_pi:
 	pickle.dump(norm_diff_load_mean, file_pi)
 
 for count_i, (stat_i, var_i) in enumerate(itertools.product(['mu', 'std'], ['DVR', 'R1'])):
 	open_mode = 'wb' if count_i == 0 else 'ab'
-	with open(os.path.join(save_model_dir, gif_fold_name,
+	with open(os.path.join(save_model_dir,
 						   'norm_diff_avg_meanROI_{}.csv'.format(str_noise)), open_mode) as file_pi:
 		np.savetxt(file_pi, np.mean(norm_diff_load_mean[stat_i + '_' + var_i + '_mean'], 0,
 									keepdims=True),
