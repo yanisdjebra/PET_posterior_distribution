@@ -100,13 +100,13 @@ The script saves per‑ROI chains and diagnostics in `sim_data/` and plots some 
 
 After training, `main_script.py` outputs figures in png, pdf and eps format in the save directory (in results folder) such as a bar-plot of posterior distribution using the proposed method vs MCMC:
 
-md\n![Bar plot representing the posterior distribution of kinetic parameters DVR (top) and R1 (bottom) per ROI for a testing measurement.](./results/nROI48/25-07-10_16-13-15_train/25-07-14_16-35_improved_ddpm_f128_d4_p2_s1.0e-01/cp_450/_s1.0e-01/barplot_epoch450_km_obs-0.842-0.833-0.013.png)\n
+md\n![Bar plot](./results/nROI48/25-07-10_16-13-15_train/25-07-14_16-35_improved_ddpm_f128_d4_p2_s1.0e-01/cp_450/_s1.0e-01/barplot_epoch450_km_obs-0.842-0.833-0.013.png)\n\n*Bar plot representing the posterior distribution of kinetic parameters DVR (top) and R1 (bottom) per ROI for a testing measurement.*\n
 
 To show the diffusion process, one can use the flag `keep_all_xt=True` in the `Params for plot` section and create a movie of the diffusion process, i.e. from noise to the approximated posterior distribution p(x|y). In such case, and if `FLAG_PLOT` is True, ``main_script.py`` will create the following GIF and MP4 file:
 
-md\n![Movie of the diffusion process of trained iDDPM, from noise to p(x|y) for DVR](./results/nROI48/25-07-10_16-13-15_train/25-07-14_16-35_improved_ddpm_f128_d4_p2_s1.0e-01/cp_450/_s1.0e-01/dist_DVR_epoch450_km_obs-0.842-0.833-0.013.gif)\n
+md\n![Movie DVR](./results/nROI48/25-07-10_16-13-15_train/25-07-14_16-35_improved_ddpm_f128_d4_p2_s1.0e-01/cp_450/_s1.0e-01/dist_DVR_epoch450_km_obs-0.842-0.833-0.013.gif)\n\n*Movie of the diffusion process of trained iDDPM, from noise to p(x|y) for DVR*\n
 
-md\n![Movie of the diffusion process of trained iDDPM, from noise to p(x|y) for R1](./results/nROI48/25-07-10_16-13-15_train/25-07-14_16-35_improved_ddpm_f128_d4_p2_s1.0e-01/cp_450/_s1.0e-01/dist_R1_epoch450_km_obs-0.842-0.833-0.013.gif)\n
+md\n![Movie R1](./results/nROI48/25-07-10_16-13-15_train/25-07-14_16-35_improved_ddpm_f128_d4_p2_s1.0e-01/cp_450/_s1.0e-01/dist_R1_epoch450_km_obs-0.842-0.833-0.013.gif)\n\n*Movie of the diffusion process of trained iDDPM, from noise to p(x|y) for R1*\n
 
 ## Citation
 
@@ -130,5 +130,5 @@ This code is released for **academic research** under the MIT license (see `LIC
 
 Portions of the training pipeline were adapted from [Ho *et al.* (NeurIPS 2020)] Denoising Diffusion Probabilistic Models and [Nichol & Dhariwal (2021)] Improved DDPM.
 
-Research supported by NIH grants **P41EB022544**, **R01EB033582**, **P01AG036694** and others listed in the paper.
+Research supported by NIH grants **P41EB022544, R01EB033582, R01EB035093, R21EB034911, R01AG076153, R21AG070714, R01AG085561,** and **P01AG036694**.
 
