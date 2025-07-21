@@ -105,6 +105,10 @@ After training, `main_script.py` outputs figures in png, pdf and eps format in t
 
 To show the diffusion process, one can use the flag `keep_all_xt=True` in the `Params for plot` section and create a movie of the diffusion process, i.e. from noise to the approximated posterior distribution p(x|y). In such case, and if `FLAG_PLOT` is True, ``main_script.py`` will create the following GIF and MP4 file:
 
+<video src="./results/nROI48/25-07-10_16-13-15_train/25-07-14_16-35_improved_ddpm_f128_d4_p2_s1.0e-01/cp_450/_s1.0e-01/dist_DVR_epoch450_km_obs-0.842-0.833-0.013.mp4" width="480" controls loop muted>
+  Movie of the diffusion process of trained iDDPM, from noise to p(x|y) for DVR.
+</video>
+
 ![Movie DVR](./results/nROI48/25-07-10_16-13-15_train/25-07-14_16-35_improved_ddpm_f128_d4_p2_s1.0e-01/cp_450/_s1.0e-01/dist_DVR_epoch450_km_obs-0.842-0.833-0.013.gif)*Movie of the diffusion process of trained iDDPM, from noise to p(x|y) for DVR*
 
 ![Movie R1](./results/nROI48/25-07-10_16-13-15_train/25-07-14_16-35_improved_ddpm_f128_d4_p2_s1.0e-01/cp_450/_s1.0e-01/dist_R1_epoch450_km_obs-0.842-0.833-0.013.gif)*Movie of the diffusion process of trained iDDPM, from noise to p(x|y) for R1*
