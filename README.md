@@ -60,6 +60,8 @@ The script saves `data_nROI48_n100000_s1.0e-01.pik` (train) and a test set under
 
 If you already have real TACs, adapt `sample_sim_data.py` to point to your prior calculated from your ROI‑wise measurements.
 
+*Note: A few samples from the testing data are provided in `sim_data/**/*_test` with MCMC reference. Therefore, if training the network is not of interest, one could just load the weights of the model (in `results`) and use inference on the provided testing data samples, and compare with the MCMC estimated distribution provided.*
+
 ---
 
 ## Training
