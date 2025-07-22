@@ -1,4 +1,4 @@
 **/.DS_Store
-sim_data/
+sim_data/**/*_train*
 __pycache__
 results/nROI48/25-07-10_16-13-15_train/25-07-14_16-35_improved_ddpm_f128_d4_p2_s1.0e-01/cp_450/_s1.0e-01/*all_t*.pik
