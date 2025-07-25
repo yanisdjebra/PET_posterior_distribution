@@ -40,7 +40,7 @@ The model learns the *full Bayesian posterior* over Distribution Volume Ratio (*
 $ git clone https://github.com/yanisdjebra/PET_posterior_distribution.git
 $ cd PET_posterior_distribution
 
-# Python 3.9+ environment (GPU strongly recommended)
+# Python 3.10 environment (GPU strongly recommended)
 (See requirements.txt)
 ```
 
@@ -55,14 +55,22 @@ $ cd PET_posterior_distribution
 Synthetic TACs can be generated from SRTM2 with realistic priors learned from 50 [¹⁸F]MK‑6240 scans.
 Run `sample_sim_data.py`, changing accordingly the simulation parameters and directories:
 ```
-HOME_DIR, n_samples, n_ROI, flag_testing_data, mean_sigma_noise_save, alpha
+CUR_DIR, n_samples, n_ROI, flag_testing_data, mean_sigma_noise_save, alpha
 ```
 
-The script saves `data_nROI48_n100000_s1.0e-01.pik` (train) and a test set under `sim_data/`.
+The script saves `data_nROI{n_ROI}_n{n_samples}_s{mean_sigma_noise_save}.pik` (train) and a test set under `sim_data/`.
 
 If you already have real TACs, adapt `sample_sim_data.py` to point to your prior calculated from your ROI‑wise measurements.
 
-*Note: A few samples from the testing data are provided in `sim_data/**/*_test` with MCMC reference. Therefore, if training the network is not of interest, one could just load the weights of the model (in `results`) and use inference on the provided testing data samples, and compare with the MCMC estimated distribution provided.*
+*Note: A few samples from the testing data are provided in `sim_data/**/*_test` with MCMC reference. Therefore, if training the network is not of interest, one could just load the weights of the model (in `results`), use inference on the provided testing data samples, and compare with the MCMC estimated distribution provided.*
+
+
+## MCMC baseline
+
+To reproduce the Metropolis‑Hastings ground truth used in the paper, run in python mcmc.py
+
+The script saves per‑ROI chains and diagnostics in `sim_data/` and plots some figures showing the posterior distribution of kinetic parameters. It will automatically load the TAC data in the latest *_test folder created.
+
 
 ---
 
@@ -73,7 +81,7 @@ If you already have real TACs, adapt `sample_sim_data.py` to point to your prior
 ```bash
 $ python main_script.py
 ```
-`HOME_DIR` is defined as the root of the git repository. Parameters to load the simulated TACs `(n_samples_orig, n_samples_test, n_ROI, mean_sigma_noise_save)` are defined in the `Load TACs` section for training and testing datasets, automatically loading the data from the directory created in `sample_sim_data.py`.
+`CUR_DIR` is defined as the root of the git repository by default. Parameters to load the simulated TACs `(n_samples_orig, n_samples_test, n_ROI, mean_sigma_noise_save)` are defined in the `Load TACs` section for training and testing datasets, automatically loading the data from the directory created in `sample_sim_data.py`.
 
 Parameters for the U-net can be changed in the `Parameters for neural network` section. `net_args` defines the network to use, e.g., the number of initial filters, depth, kernel size, etc—**edit them as needed**.
 
@@ -82,7 +90,7 @@ Training parameters (epochs, learning rate schedule, time steps, noise schedule 
 Checkpoints, loss curves and posterior plots land in
 
 ```
-results/nROI48/<time>_<model_name>_f128_d4_p2_s1.0e-01/
+results/nROI48/<time>_<model_name>_f{}_d{}_p{}_s{}/
 ```
 
 ---
@@ -92,12 +100,6 @@ results/nROI48/<time>_<model_name>_f128_d4_p2_s1.0e-01/
 After training you can draw posterior samples with the stored model at each checkpoint. This is performed in the `Load trained model and infer neural network` section. Parameters for inference and plots are defined above in the `Params for plot` section. For example, the user can modify the number of posterior sample to be generated (`n_posterior`), for which training epoch to load the model for inference (`make_png_period`), if one wants to plot figures (`FLAG_PLOT`), etc.
 
 ---
-
-## MCMC baseline
-
-To reproduce the Metropolis‑Hastings ground truth used in the paper, run in python mcmc.py
-
-The script saves per‑ROI chains and diagnostics in `sim_data/` and plots some figures showing the posterior distribution of kinetic parameters.
 
 
 ## Results

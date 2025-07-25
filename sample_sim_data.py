@@ -10,12 +10,13 @@ from scipy import stats as spst
 from scipy.spatial.distance import mahalanobis
 import matplotlib
 
-matplotlib.use('Qt5Agg')
+matplotlib.use('Agg')
 from matplotlib import pyplot as plt
 
 # Set current directory to base of the git repo
 CUR_DIR = './'
 os.chdir(CUR_DIR)
+FLAG_PLOT = True
 
 import kinetic_model as ptk
 import helper_func as hlp
@@ -85,9 +86,9 @@ dt = acquisition_time_frames[:, 1] - acquisition_time_frames[:, 0]
 
 ## Parameters
 
-n_samples = 100
+n_samples = 100000
 n_ROI = 48
-flag_testing_data = True
+flag_testing_data = False
 mean_sigma_noise_save = 1e-1  # mean noise level for simulated TACs
 alpha = 0.8  # rejection criterion for testing data
 flag_mahalanobis = flag_testing_data  # Use mahalanobis distance for rejection criterion
@@ -240,28 +241,29 @@ with open(os.path.join(
 
 # %% Quick plot of time-activity curves
 
-sample_plot = 0
-linewidth_plot = 2
+if FLAG_PLOT:
+	sample_plot = 0
+	linewidth_plot = 2
 
-n_ROI_list_show = np.arange(0, n_ROI, 2).tolist()
+	n_ROI_list_show = np.arange(0, n_ROI, 2).tolist()
 
-for xi, x in enumerate([time_vector, np.arange(len(time_vector))]):
-	# plot with and without time vector along x to better show activity in early frames
-	fig_all, ax_all = plt.subplots(int(np.ceil(np.sqrt(len(n_ROI_list_show)))),
-	                               int(np.ceil(np.sqrt(len(n_ROI_list_show)))),
-	                               figsize=(16, 13), sharex=True, sharey=True)
+	for xi, x in enumerate([time_vector, np.arange(len(time_vector))]):
+		# plot with and without time vector along x to better show activity in early frames
+		fig_all, ax_all = plt.subplots(int(np.ceil(np.sqrt(len(n_ROI_list_show)))),
+		                               int(np.ceil(np.sqrt(len(n_ROI_list_show)))),
+		                               figsize=(16, 13), sharex=True, sharey=True)
 
-	for ni in range(len(n_ROI_list_show)):
-		ax_all.flatten()[ni].plot(x, tac_noisy_sampled[sample_plot][n_ROI_list_show[ni],] / dt,
-		                          label='noisy', linewidth=linewidth_plot, color='red')
-		ax_all.flatten()[ni].plot(x, tac_sampled[sample_plot][n_ROI_list_show[ni],] / dt,
-		                          label='no noise', linewidth=linewidth_plot, alpha=0.6, color='black')
+		for ni in range(len(n_ROI_list_show)):
+			ax_all.flatten()[ni].plot(x, tac_noisy_sampled[sample_plot][n_ROI_list_show[ni],] / dt,
+			                          label='noisy', linewidth=linewidth_plot, color='red')
+			ax_all.flatten()[ni].plot(x, tac_sampled[sample_plot][n_ROI_list_show[ni],] / dt,
+			                          label='no noise', linewidth=linewidth_plot, alpha=0.6, color='black')
 
-	fig_all.suptitle('n_ROI= {} TACs for sample {}'.format(n_ROI, sample_plot), fontsize=12)
+		fig_all.suptitle('n_ROI= {} TACs for sample {}'.format(n_ROI, sample_plot), fontsize=12)
 
-	ax_all.flatten()[0].legend()
-	fig_all.tight_layout()
+		ax_all.flatten()[0].legend()
+		fig_all.tight_layout()
 
-	for fmt_save in ['pdf', 'png']:
-		fig_all.savefig(os.path.join(save_km_dir, 'TAC_plot_nROI{}_sample{}_{}.{}'.format(n_ROI, sample_plot,
-		                                                                                  xi, fmt_save)), )
+		for fmt_save in ['pdf', 'png']:
+			fig_all.savefig(os.path.join(save_km_dir, 'TAC_plot_nROI{}_sample{}_{}.{}'.format(n_ROI, sample_plot,
+			                                                                                  xi, fmt_save)), )

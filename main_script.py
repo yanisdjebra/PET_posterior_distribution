@@ -20,6 +20,7 @@ from scipy.stats import norm
 import tensorflow_probability as tfp
 import time
 
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 try:
@@ -31,14 +32,15 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
 tf.config.experimental.set_memory_growth(tf.config.list_physical_devices('GPU')[0], True)
 
-FLAG_XLA = True  # Deactivate XLA if tensorflow cannot find the cuda libraries
-# Set cuda library directory for conda environment
-# (change for the appropriate cuda lib  directory if XLA acceleration is wanted)
-cuda_dir = os.path.join(os.environ.get('CONDA_PREFIX'), 'lib')
+FLAG_XLA = False  # Deactivate XLA if tensorflow cannot find the cuda libraries
+
 
 ## Get paths (gpu-node008 if on server, Dropbox else)
 
 if FLAG_XLA:
+	# Set cuda library directory for conda environment
+	# (change for the appropriate cuda lib  directory if XLA acceleration is wanted)
+	cuda_dir = os.path.join(os.environ.get('CONDA_PREFIX'), 'lib')
 	os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=' + cuda_dir
 	tf.config.optimizer.set_jit(True)  # Enable XLA.
 
@@ -169,7 +171,7 @@ lrn_rate_i = 2e-4
 lrn_rate_f = 5e-5
 epochs = 500
 period = 50
-clipnorm = 1.
+clipnorm = 1.5
 validation_split = 0.1
 loss = 'MeanSquaredError'
 
@@ -257,22 +259,7 @@ save_model_name = '{}_{}_f{}_d{}_p{}{}'.format(
 
 save_model_dir = os.path.join(res_roi_dir, save_model_name)
 
-# # Create input spec signature to pass for saving checkpoints
-# specs = [
-#     tf.TensorSpec((None,) + dset.shape[1:],   TF_DTYPE, name="x"),
-#     tf.TensorSpec((None,),                    tf.int32,  name="time"),
-#     tf.TensorSpec((None,) + label.shape[1:],  TF_DTYPE, name="condition"),
-# ]
-#
-# @tf.function(input_signature=specs)
-# def serve(x, time, condition):
-# 	# Force `training=False` so there’s no stochasticity
-# 	return diff_model(x, time, condition, training=False)
-#
-# concrete_fn = serve.get_concrete_function()  # binds the signature
-
-
-# cp = cl.SavedModelCheckpoint(root_dir=save_model_dir, every_n_epochs=1, input_spec=specs,)
+# cp = cl.SavedModelCheckpoint(root_dir=save_model_dir, every_n_epochs=period,)
 cp = cl.WeightsCheckpoint(root_dir=save_model_dir, every_n_epochs=period)
 
 # Train
@@ -340,7 +327,7 @@ load_model = True
 save_posterior_res = True  # save inference results in .pik file
 flag_load_res = True  # load results instead of inference if .pik file available
 timesteps_model = getattr(diff_model, 'timesteps', None)
-make_png_period = [50]  #range(period, epochs + period, period)
+make_png_period = range(period, epochs + period, period)
 sample_range = range(0, 2)
 
 # Params for plots

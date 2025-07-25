@@ -12,7 +12,7 @@ import pytensor as ptt
 from pytensor.graph.op import Op
 from scipy.stats import norm
 
-matplotlib.use('TkAgg')
+matplotlib.use('Agg')
 # matplotlib.use('Qt5Agg')
 
 import matplotlib.pyplot as plt
@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 import kinetic_model as ptk
 
 NP_DTYPE = np.float64
+FLAG_PLOT = False
 
 # %% class used for kinetic modelling forward model for compatibility with pytensor and pymc fraemwork
 
@@ -41,6 +42,7 @@ class CreateTAC_SRTM2(Op):
 ## Get paths (gpu-node008 if on server, Dropbox else)
 
 # Set current directory to base of the git repo
+CUR_DIR = './'
 os.chdir(CUR_DIR)
 
 root_data_dir = CUR_DIR
@@ -51,8 +53,8 @@ data_dir = os.path.join(root_data_dir, 'sim_data')
 n_ROI_test = 48
 n_samples_test = 100
 mean_sigma_noise_load = 1e-1
-iter_mcmc = 20000
-burn_mcmc = 40000
+iter_mcmc = 200
+burn_mcmc = 400
 chains = 4
 str_noise = '_s{:.1e}'.format(mean_sigma_noise_load)
 
@@ -99,7 +101,7 @@ mean_sigma_noise = load_test_dict['mean_sigma_noise']
 # Parameters order and names
 km_param_str = ['DVR', 'R1', ]
 # Check for ROI #No ...
-for sample_plot in range(0, 3):
+for sample_plot in range(0, 10):
 
 	km_obs = {'DVR': DVR_load[sample_plot],
 	          'R1':  R1_load[sample_plot],
@@ -193,63 +195,64 @@ for sample_plot in range(0, 3):
 
 	## Plot figures
 
-	# Separate windows for plots or subplot in one window
-	n_window_plot = 3
-	# Check for ROI #No ...
-	roi_plot = 0
+	if FLAG_PLOT:
+		# Separate windows for plots or subplot in one window
+		n_window_plot = 3
+		# Check for ROI #No ...
+		roi_plot = 0
 
-	fig, ax = [None, None, None], [None, None, None]
+		fig, ax = [None, None, None], [None, None, None]
 
-	if n_window_plot == 1:
-		fig, ax = plt.subplots(1, 3, figsize=(14, 5))
-	else:
-		fig[0], ax[0] = plt.subplots(1, 1, figsize=(12, 5))
-		fig[1], ax[1] = plt.subplots(1, 1, figsize=(12, 5))
-
-	for pp, km_param_str_i in enumerate(km_param_str):
-		if 'k2p' not in km_param_str_i:
-			var_all = eval(km_param_str_i + '_mcmc')
-			var = eval(km_param_str_i + '_mcmc[:,:,{}].flatten()'.format(roi_plot))
-			mu_tmp = eval('mu_' + km_param_str_i + '[roi_plot]')
-			km_tmp = km_obs[km_param_str_i][roi_plot]
+		if n_window_plot == 1:
+			fig, ax = plt.subplots(1, 3, figsize=(14, 5))
 		else:
-			var = eval(km_param_str_i + '_mcmc.flatten()')
-			mu_tmp = eval('mu_' + km_param_str_i)
-			km_tmp = km_obs[km_param_str_i][0]
-		ax[pp].hist(var, bins=100, color='red', label=['MCMC ' + km_param_str_i], density=True)
-		x_axis = np.arange(ax[pp].axis()[0], ax[pp].axis()[1], 1e-4)
-		ax[pp].plot(x_axis, norm.pdf(x_axis, np.mean(var), np.std(var)), linewidth=3.)
-		ax[pp].axvline(x=np.mean(var), color='black',
-		               linestyle='--', label='mean')
-		ax[pp].set_title('prior: $\mu = {:.4f}$ ({}_observed = {:.4f}) \n'
-		                 'MCMC: $\mu = {:.4f}$ - $\sigma = {:.4f}$'.format(mu_tmp,
-		                                                                   km_param_str_i, km_tmp,
-		                                                                   np.mean(var), np.std(var)))
-		save_fig_filename = save_dir_filename.replace('.pik', '_{}_ROI{:d}.png'.format(km_param_str_i, roi_plot))
-		fig[pp].savefig(save_fig_filename)
-		plt.close(fig[pp])
+			fig[0], ax[0] = plt.subplots(1, 1, figsize=(12, 5))
+			fig[1], ax[1] = plt.subplots(1, 1, figsize=(12, 5))
 
-		fig_all, ax_all = plt.subplots(int(np.ceil(np.sqrt(n_ROI_test))),
-		                               int(np.ceil(np.sqrt(n_ROI_test))),
-		                               figsize=(16, 10))
-		ax_all = np.array(ax_all) if isinstance(ax_all, matplotlib.axes._axes.Axes) else ax_all
+		for pp, km_param_str_i in enumerate(km_param_str):
+			if 'k2p' not in km_param_str_i:
+				var_all = eval(km_param_str_i + '_mcmc')
+				var = eval(km_param_str_i + '_mcmc[:,:,{}].flatten()'.format(roi_plot))
+				mu_tmp = eval('mu_' + km_param_str_i + '[roi_plot]')
+				km_tmp = km_obs[km_param_str_i][roi_plot]
+			else:
+				var = eval(km_param_str_i + '_mcmc.flatten()')
+				mu_tmp = eval('mu_' + km_param_str_i)
+				km_tmp = km_obs[km_param_str_i][0]
+			ax[pp].hist(var, bins=100, color='red', label=['MCMC ' + km_param_str_i], density=True)
+			x_axis = np.arange(ax[pp].axis()[0], ax[pp].axis()[1], 1e-4)
+			ax[pp].plot(x_axis, norm.pdf(x_axis, np.mean(var), np.std(var)), linewidth=3.)
+			ax[pp].axvline(x=np.mean(var), color='black',
+			               linestyle='--', label='mean')
+			ax[pp].set_title('prior: $\mu = {:.4f}$ ({}_observed = {:.4f}) \n'
+			                 'MCMC: $\mu = {:.4f}$ - $\sigma = {:.4f}$'.format(mu_tmp,
+			                                                                   km_param_str_i, km_tmp,
+			                                                                   np.mean(var), np.std(var)))
+			save_fig_filename = save_dir_filename.replace('.pik', '_{}_ROI{:d}.png'.format(km_param_str_i, roi_plot))
+			fig[pp].savefig(save_fig_filename)
+			plt.close(fig[pp])
 
-		for ni in range(n_ROI_test):
-			ax_all.flatten()[ni].hist(var_all[:, :, ni].flatten(),
-			                          density=True, label=format(ni), bins=100)
-			x_axis = np.linspace(ax_all.flatten()[ni].axis()[0],
-			                     ax_all.flatten()[ni].axis()[1], num=500)
-			ax_all.flatten()[ni].plot(x_axis, norm.pdf(x_axis, np.mean(var_all[:, :, ni].flatten()),
-			                                           np.std(var_all[:, :, ni].flatten())),
-			                          linewidth=3., color='black')
-			km_tmp = km_obs[km_param_str_i][ni]
-			ax_all.flatten()[ni].set_title('({}_obs = {:.2f}) '
-			                               '$\mu = {:.2f}$ - $\sigma = {:.3f}$'.format(km_param_str_i, km_tmp,
-			                                                                           np.mean(
-				                                                                           var_all[:, :, ni].flatten()),
-			                                                                           np.std(var_all[:, :,
-			                                                                                  ni].flatten())))
-			ax_all.flatten()[ni].legend()
-		save_fig_all_filename = save_dir_filename.replace('.pik', '_{}_ROI_all.png'.format(km_param_str_i))
-		fig_all.savefig(save_fig_all_filename)
-		plt.close(fig_all)
+			fig_all, ax_all = plt.subplots(int(np.ceil(np.sqrt(n_ROI_test))),
+			                               int(np.ceil(np.sqrt(n_ROI_test))),
+			                               figsize=(16, 10))
+			ax_all = np.array(ax_all) if isinstance(ax_all, matplotlib.axes._axes.Axes) else ax_all
+
+			for ni in range(n_ROI_test):
+				ax_all.flatten()[ni].hist(var_all[:, :, ni].flatten(),
+				                          density=True, label=format(ni), bins=100)
+				x_axis = np.linspace(ax_all.flatten()[ni].axis()[0],
+				                     ax_all.flatten()[ni].axis()[1], num=500)
+				ax_all.flatten()[ni].plot(x_axis, norm.pdf(x_axis, np.mean(var_all[:, :, ni].flatten()),
+				                                           np.std(var_all[:, :, ni].flatten())),
+				                          linewidth=3., color='black')
+				km_tmp = km_obs[km_param_str_i][ni]
+				ax_all.flatten()[ni].set_title('({}_obs = {:.2f}) '
+				                               '$\mu = {:.2f}$ - $\sigma = {:.3f}$'.format(km_param_str_i, km_tmp,
+				                                                                           np.mean(
+					                                                                           var_all[:, :, ni].flatten()),
+				                                                                           np.std(var_all[:, :,
+				                                                                                  ni].flatten())))
+				ax_all.flatten()[ni].legend()
+			save_fig_all_filename = save_dir_filename.replace('.pik', '_{}_ROI_all.png'.format(km_param_str_i))
+			fig_all.savefig(save_fig_all_filename)
+			plt.close(fig_all)
