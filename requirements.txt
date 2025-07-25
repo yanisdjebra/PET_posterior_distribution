@@ -1,14 +1,15 @@
 # version-pinned items
-numpy==1.26.4
+tensorflow[and-cuda]==2.19
+tensorflow_probability==0.24.0
 scipy==1.12.0
 pymc==5.12.0
-pytensor==2.19.0
-tensorflow==2.10.0          # use tensorflow-macos on Apple Silicon
-tensorflow_probability==0.18.0
+numpy<1.28
+
+# pytensor==2.19.0
+
 
 # optional utilities (no pin)
 tqdm
 matplotlib
 matplotlib-label-lines
-pillow
 imageio
