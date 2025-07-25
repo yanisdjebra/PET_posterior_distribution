@@ -13,14 +13,14 @@ import matplotlib
 matplotlib.use('Qt5Agg')
 from matplotlib import pyplot as plt
 
-# Set Home directory to base of the git repo
-HOME_DIR = os.path.expanduser('~')
-os.chdir(HOME_DIR)
+# Set current directory to base of the git repo
+CUR_DIR = './'
+os.chdir(CUR_DIR)
 
 import kinetic_model as ptk
 import helper_func as hlp
 
-data_dir = os.path.join(HOME_DIR, 'sim_data')
+data_dir = os.path.join(CUR_DIR, 'sim_data')
 
 ## Define dt and time vector
 
@@ -102,7 +102,7 @@ if not os.path.isdir(save_samples_dir):
 ## Defining Explicit prior from scans
 
 # load file for prior parameters
-stats_dict = pickle.load(open(os.path.join(HOME_DIR, 'prior_stats_nROI{}.pik'.format(n_ROI)), 'rb'))
+stats_dict = pickle.load(open(os.path.join(CUR_DIR, 'prior_stats_nROI{}.pik'.format(n_ROI)), 'rb'))
 
 target_ROI_names = stats_dict['ROI_names']
 
@@ -176,7 +176,7 @@ for n_i in tqdm.tqdm(range(n_samples)):
 		params_SRTM = {"k2p": vark2p[n_i], "R1": varR1[n_i], "DVR": varDVR[n_i]}
 		# Create SRTM / MRTM object
 		k_mrtm = ptk.SRTM2(frame_time_list=time_vector, frame_duration_list=dt, tac_reference=vartacref[n_i])
-		xsingle = (k_mrtm.create_activity_curve(params_SRTM) * dt[:, None]).T
+		xsingle = (k_mrtm.create_activity_curve(**params_SRTM) * dt[:, None]).T
 		if np.sum(xsingle < 0) > 0:
 			pp += 1
 			varDVR[n_i] = hlp.truncnormal_samples(mu_DVR, Cov_DVR, Cov_DVR_inv, 1, cond_test)[0]

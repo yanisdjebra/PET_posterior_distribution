@@ -21,8 +21,11 @@ import tensorflow_probability as tfp
 import time
 
 import matplotlib.pyplot as plt
-from PIL import Image
-import imageio.v3 as iio
+
+try:
+	import imageio.v3 as iio
+except ModuleNotFoundError:
+	iio = None
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
@@ -39,17 +42,17 @@ if FLAG_XLA:
 	os.environ['XLA_FLAGS'] = '--xla_gpu_cuda_data_dir=' + cuda_dir
 	tf.config.optimizer.set_jit(True)  # Enable XLA.
 
-# Set Home directory to base of the git repo
-HOME_DIR = os.path.expanduser('~')
-os.chdir(HOME_DIR)
+# Set current directory to base of the git repo
+CUR_DIR = './'
+os.chdir(CUR_DIR)
 
 import networks as cl   # cl: Custom Layer
 import diffusion_model as cm  # cm: Custom Model
 from diffusion_model import DTYPE, TF_DTYPE, NP_DTYPE
 import helper_func as hlp
 
-root_data_dir = HOME_DIR
-data_dir = os.path.join(HOME_DIR, 'sim_data')
+root_data_dir = CUR_DIR
+data_dir = os.path.join(CUR_DIR, 'sim_data')
 res_dir = os.path.join(root_data_dir, 'results')
 
 
@@ -168,7 +171,7 @@ epochs = 500
 period = 50
 clipnorm = 1.
 validation_split = 0.1
-
+loss = 'MeanSquaredError'
 
 # DDPM/iDDPM
 diff_args = {
@@ -178,7 +181,6 @@ diff_args = {
 					   'schedule_name': 'cosine'},
 	'lambda_vlb': 1e-1,
 	'ndim': 1,
-	# 'ema_decay': 0.98,
 }
 
 # Exp decreasing learning rate
@@ -186,13 +188,6 @@ decay_rate = (lrn_rate_f / lrn_rate_i) ** (1 / epochs)
 decay_steps = n_samples // batch_size
 lrn_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
 	lrn_rate_i, decay_steps, decay_rate)
-
-opt = keras.optimizers.Adam(learning_rate=lrn_schedule, clipnorm=clipnorm)
-
-compile_args = {
-	'opt_config': opt.get_config(),
-	'loss': 'MeanSquaredError'
-}
 
 dir_arg = {
 	'res_roi_dir': res_roi_dir,
@@ -214,9 +209,33 @@ misc_params = {
 	'period': period,
 	'validation_split': validation_split,
 	'clipnorm': clipnorm,
-	'loss': compile_args['loss'],
+	'loss': loss,
 	'str_noise': str_noise,
 	'mean_sigma_noise': mean_sigma_noise,
+}
+
+## Build and compile model
+
+importlib.reload(cl)
+importlib.reload(cm)
+
+network = cl.UnetConditional(**net_args)
+diff_model = cm.ImprovedDDPM(network=network, **diff_args)
+
+# initialize the model in the memory of our GPU and build (create Variables)
+test_images = dset[:5, ...]
+test_label = label[:5, ...]
+test_timestamps = tf.random.uniform(shape=[5, ], minval=0, maxval=timesteps, dtype=tf.int32)
+k = diff_model({'x': test_images, 'time': test_timestamps, 'condition': test_label})
+
+opt = keras.optimizers.Adam(learning_rate=lrn_schedule, clipnorm=clipnorm)
+diff_model.compile(optimizer=opt, loss=tf.keras.losses.deserialize(loss))
+
+
+## Add compile args for saving and create model_args dict to save later
+compile_args = {
+	'opt_config': opt.get_config(),
+	'loss': loss
 }
 
 model_args = {'net_args':       net_args.copy(),
@@ -225,25 +244,6 @@ model_args = {'net_args':       net_args.copy(),
 			  'dir_arg':        dir_arg.copy(),
 			  'misc_params':    misc_params.copy()
 			  }
-
-
-## Build and compile model
-
-importlib.reload(cl)
-importlib.reload(cm)
-
-network = cl.UnetConditional(**net_args)
-
-# initialize the model in the memory of our GPU
-test_images = dset[:5, ...]
-test_label = label[:5, ...]
-
-diff_model = cm.ImprovedDDPM(network=network, **diff_args)
-
-test_timestamps = tf.random.uniform(shape=[5, ], minval=0, maxval=timesteps, dtype=tf.int32)
-k = diff_model(test_images, test_timestamps, test_label)
-
-diff_model.compile(optimizer=opt, loss=tf.keras.losses.deserialize(compile_args['loss']))
 
 
 ## Training
@@ -257,10 +257,25 @@ save_model_name = '{}_{}_f{}_d{}_p{}{}'.format(
 
 save_model_dir = os.path.join(res_roi_dir, save_model_name)
 
-cp = tf.keras.callbacks.ModelCheckpoint(
-	filepath=os.path.join(save_model_dir, 'cp_{epoch}'),
-	save_best_only=False, monitor='loss', period=period)
+# # Create input spec signature to pass for saving checkpoints
+# specs = [
+#     tf.TensorSpec((None,) + dset.shape[1:],   TF_DTYPE, name="x"),
+#     tf.TensorSpec((None,),                    tf.int32,  name="time"),
+#     tf.TensorSpec((None,) + label.shape[1:],  TF_DTYPE, name="condition"),
+# ]
+#
+# @tf.function(input_signature=specs)
+# def serve(x, time, condition):
+# 	# Force `training=False` so there’s no stochasticity
+# 	return diff_model(x, time, condition, training=False)
+#
+# concrete_fn = serve.get_concrete_function()  # binds the signature
 
+
+# cp = cl.SavedModelCheckpoint(root_dir=save_model_dir, every_n_epochs=1, input_spec=specs,)
+cp = cl.WeightsCheckpoint(root_dir=save_model_dir, every_n_epochs=period)
+
+# Train
 tic = time.time()
 history = diff_model.fit(x=dset, y=label,
 						 batch_size=batch_size,
@@ -294,7 +309,7 @@ if 'history_dict' in locals():
 if not os.path.isdir(save_model_dir):
 	os.makedirs(save_model_dir)
 
-diff_model.save(save_model_dir, )
+diff_model.save(os.path.join(save_model_dir, 'saved_model.keras'))
 
 with open(os.path.join(save_model_dir, 'trainHistoryDict.pik'), 'wb') as file_pi:
 	pickle.dump(history_dict, file_pi)
@@ -318,15 +333,15 @@ chunk_size = n_posterior
 # ROI index for plot
 roi_plot = 0
 # Flag to keep DDPM output for all timestep  ({x_t}, t = [T,...,0])
-keep_all_xt = True
+keep_all_xt = False
 
 # Load trained model and inference params
 load_model = True
 save_posterior_res = True  # save inference results in .pik file
 flag_load_res = True  # load results instead of inference if .pik file available
 timesteps_model = getattr(diff_model, 'timesteps', None)
-make_png_period = [450]  #range(period, epochs + period, period)
-sample_range = range(0, 1)
+make_png_period = [50]  #range(period, epochs + period, period)
+sample_range = range(0, 2)
 
 # Params for plots
 hist_pred_color = 'royalblue'
@@ -405,7 +420,9 @@ for sample_plot in sample_range:
 					km_pred_all_t = pickle.load(file_i)['km_pred_all_t']
 
 		else:
-			diff_model.set_weights(tf.keras.models.load_model(load_weight_dir).get_weights())
+			# diff_model.set_weights(tf.keras.models.load_model(os.path.join(
+			# 	load_weight_dir, 'ckpt.weights.h5')).get_weights())
+			diff_model.load_weights(os.path.join(load_weight_dir, 'ckpt.weights.h5'))
 			km_pred_list, km_pred_all_t_list = [], []
 			if 'km_pred_T' not in locals():
 				km_pred_T = tf.random.normal((n_posterior, n_ROI, 2), dtype=TF_DTYPE)
@@ -421,9 +438,10 @@ for sample_plot in sample_range:
 				km_pred_list.append(x)
 
 			km_pred = np.concatenate(km_pred_list, axis=0)
-			km_pred_all_t = np.concatenate(km_pred_all_t_list, axis=0)
 			km_pred_dict = {key: km_pred[:, dict_idx[key][0], dict_idx[key][1]]
 								  for key in km_param_str}
+			if keep_all_xt:
+				km_pred_all_t = np.concatenate(km_pred_all_t_list, axis=0)
 
 			pred = {'mean_' + key: km_pred[:, dict_idx[key][0], dict_idx[key][1]].mean(axis=0)
 					for key in km_param_str}
@@ -441,7 +459,7 @@ for sample_plot in sample_range:
 			_ = gc.collect()
 
 		## Movie figure with posterior distribution for all timesteps
-		if keep_all_xt and FLAG_PLOT:
+		if keep_all_xt and FLAG_PLOT and iio is not None:
 			tmp_dir = os.path.join(load_model_dir, 'tmp_files')
 			if not os.path.isdir(tmp_dir):
 				os.makedirs(tmp_dir)
@@ -731,40 +749,25 @@ for sample_plot in sample_range:
 							}
 				std_dict['Norm_diff'] = np.abs((std_dict['MCMC'] - std_dict['NN']) / std_dict['MCMC'])
 
-				Cov_Corr_dict = {'Cov': Cov_dict, 'Corr': Corr_dict, 'mu': mu_dict, 'std': std_dict}
+				mu_std_dict = {'mu': mu_dict, 'std': std_dict}
 
-				vmin = {'Cov':  [0 if np.percentile(Cov_dict['MCMC'], 2) > 0 else np.percentile(Cov_dict['MCMC'], 2),
-								 0 if np.percentile(Cov_dict['MCMC'], 2) > 0 else np.percentile(Cov_dict['MCMC'], 2),
-								 0],
-						'Corr': [0 if np.percentile(Corr_dict['MCMC'], 2) > 0 else np.percentile(Corr_dict['MCMC'], 2),
-								 0 if np.percentile(Corr_dict['MCMC'], 2) > 0 else np.percentile(Corr_dict['MCMC'], 2),
-								 0],  # [-1, -1, None],
-						'mu':   [0, 0, 0],
+				vmin = {'mu':   [0, 0, 0],
 						'std':  [0, 0, 0],
 						}
-				vmax = {'Cov':  [1.2 * np.percentile(Cov_dict['MCMC'], 98),
-								 1.2 * np.percentile(Cov_dict['MCMC'], 98),
-								 1.2 * np.percentile(Cov_dict['Norm_diff'], 95)],
-						'Corr': [1.2 * np.percentile(Corr_dict['MCMC'], 98),
-								 1.2 * np.percentile(Corr_dict['MCMC'], 98),
-								 1.2 * np.percentile(Corr_dict['Norm_diff'], 95)],  # [1, 1, None],
-						'mu':   [1.2 * np.percentile(mu_dict['MCMC'], 98), 1.2 * np.percentile(mu_dict['MCMC'], 98),
+				vmax = {'mu':   [1.2 * np.percentile(mu_dict['MCMC'], 98), 1.2 * np.percentile(mu_dict['MCMC'], 98),
 								 None],
 						'std':  [1.2 * np.percentile(std_dict['MCMC'], 98), 1.2 * np.percentile(std_dict['MCMC'], 98),
 								 None]
-						# [np.percentile(Corr_dict['MCMC'], 95), np.percentile(Corr_dict['MCMC'], 95), None]
 						}
 
 				if FLAG_PLOT:
-					fig_Cov, ax_Cov = plt.subplots(1, 3, figsize=(10, 3.5))
-					fig_Corr, ax_Corr = plt.subplots(1, 3, figsize=(10, 3.5))
 					fig_mu, ax_mu = plt.subplots(1, 3, figsize=(10, 3.5))
 					fig_std, ax_std = plt.subplots(1, 3, figsize=(10, 3.5))
 
-					for ax_name in ['Cov', 'Corr', 'mu', 'std']:
+					for ax_name in ['mu', 'std']:
 						exec('ax_tmp = ax_' + ax_name)
 						exec('fig_tmp = fig_' + ax_name)
-						dict_tmp = Cov_Corr_dict[ax_name]
+						dict_tmp = mu_std_dict[ax_name]
 						for iii, var_cov in enumerate(dict_tmp.keys()):
 							triu_dict_tmp = np.triu(dict_tmp[var_cov]) if \
 								dict_tmp[var_cov].shape[1] != 1 else dict_tmp[var_cov]
@@ -802,10 +805,10 @@ for sample_plot in sample_range:
 													  var, epoch_i, km_obs['DVR'][0],
 													  km_obs['R1'][0], km_obs['k2p']))
 				with open(save_stats_fname, 'wb') as file_pi:
-					pickle.dump(Cov_Corr_dict, file_pi)
+					pickle.dump(mu_std_dict, file_pi)
 
 				ppp = 0
-				for (key1, key1_val) in Cov_Corr_dict.items():
+				for (key1, key1_val) in mu_std_dict.items():
 					for key2, key2_val in key1_val.items():
 						open_mode = 'wb' if ppp == 0 else 'ab'
 						with open(save_stats_fname.replace('.pik', '.csv'), open_mode) as file_pi:
@@ -813,7 +816,7 @@ for sample_plot in sample_range:
 									   header=key1 + '-' + key2)
 						ppp += 1
 
-					# json.dump(Cov_Corr_dict, file_pi, indent=2, sort_keys=True)
+					# json.dump(mu_std_dict, file_pi, indent=2, sort_keys=True)
 
 		## Calculate ESS
 		tmp = np.stack([np.asarray(mcmc_res['DVR_mcmc'], dtype=NP_DTYPE),

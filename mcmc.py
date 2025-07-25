@@ -40,10 +40,10 @@ class CreateTAC_SRTM2(Op):
 
 ## Get paths (gpu-node008 if on server, Dropbox else)
 
-# Set Home directory to base of the git repo
-os.chdir(HOME_DIR)
+# Set current directory to base of the git repo
+os.chdir(CUR_DIR)
 
-root_data_dir = HOME_DIR
+root_data_dir = CUR_DIR
 data_dir = os.path.join(root_data_dir, 'sim_data')
 
 ##
@@ -79,7 +79,7 @@ tac_load = np.array(load_test_dict['tac_noisy_sampled'], dtype=NP_DTYPE
 tac_noiseless_load = np.array(load_test_dict['tac_sampled'], dtype=NP_DTYPE
                               ) / dt[None, None, :]
 
-stats_dict = pickle.load(open(os.path.join(HOME_DIR, 'prior_stats_nROI{}.pik'.
+stats_dict = pickle.load(open(os.path.join(CUR_DIR, 'prior_stats_nROI{}.pik'.
                                            format(n_ROI_test)), 'rb'))
 
 mu_DVR = np.array(stats_dict['mu_DVR'], dtype=NP_DTYPE)

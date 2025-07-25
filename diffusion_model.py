@@ -6,7 +6,7 @@ import tqdm
 
 DTYPE = 'float32'
 tf.keras.backend.set_floatx(DTYPE)
-TF_DTYPE = getattr(tf, DTYPE)
+TF_DTYPE = tf.dtypes.as_dtype(DTYPE)
 NP_DTYPE = getattr(np, DTYPE)
 
 import networks as cl
@@ -68,11 +68,11 @@ class DDPM(Model):
 		of the model at the timestep t=0. Can be a user-defined function
 		tf function, or lambda function.
 
+		Careful: ``call`` function takes a dict input with keys ``x``, ``time``, and ``condition``.
+
 		kwargs
 		----------
 
-		``ema_decay``: decay for the exponential moving average when updating
-		trainable weights
 		"""
 		super(DDPM, self).__init__()
 
@@ -96,19 +96,16 @@ class DDPM(Model):
 		                                  max_beta=self.max_beta)
 
 		self.alpha = 1 - self.beta
-		self.alpha_bar = np.cumprod(self.alpha, 0, dtype=NP_DTYPE)
-		self.alpha_bar = np.concatenate((np.array([1.], dtype=NP_DTYPE),
+		self.alpha_bar = np.cumprod(self.alpha, 0, dtype=DTYPE)
+		self.alpha_bar = np.concatenate((np.array([1.], dtype=DTYPE),
 		                                      self.alpha_bar[:-1]), axis=0)
 		self.alpha_bar_prev = np.concatenate((self.alpha_bar[1:],
-		                                      np.array([0.], dtype=NP_DTYPE)), axis=0)
-		self.sqrt_alpha_bar = np.sqrt(self.alpha_bar, dtype=NP_DTYPE)
-		self.sqrt_one_minus_alpha_bar = np.sqrt(1 - self.alpha_bar, dtype=NP_DTYPE)
+		                                      np.array([0.], dtype=DTYPE)), axis=0)
+		self.sqrt_alpha_bar = np.sqrt(self.alpha_bar, dtype=DTYPE)
+		self.sqrt_one_minus_alpha_bar = np.sqrt(1 - self.alpha_bar, dtype=DTYPE)
 
 		self.flag_cosine_similarity = flag_cosine_similarity
 		self.cosine_similarity_dict_idx = cosine_similarity_dict_idx
-
-		ema_decay = kwargs.get('ema_decay', 0.9999)
-		self.ema = None if ema_decay == 0 else tf.train.ExponentialMovingAverage(decay=ema_decay)
 
 		# Check input network
 		if network is not None:
@@ -137,12 +134,16 @@ class DDPM(Model):
 		else:
 			self.flag_condition = False
 
-	def call(self, inputs, time=None, condition=None, **kwargs):
-		"""Model call"""
-		cond_kwargs = {}
-		if self.flag_condition:
-			cond_kwargs = {'condition': condition}
-		output = self.network(inputs, time=time, **cond_kwargs, **kwargs)
+		self.loss_tracker = tf.keras.metrics.Mean(name="loss")
+		self.noise_loss_tracker = tf.keras.metrics.Mean(name="noise_loss")
+
+
+	def call(self, inputs, **kwargs):
+		"""Model call. inputs is a dict containing ``x``, ``time``, and ``condition``."""
+		time = inputs.get('time', None)
+		condition = inputs.get('condition', None)
+		x = inputs.get('x')
+		output = self.network(x, time=time, condition=condition, **kwargs)
 
 		if self.constrained_func_output_t0_eval is not None:
 			if hasattr(self, 'flag_learn_var'):
@@ -158,8 +159,7 @@ class DDPM(Model):
 
 	def compile(self, **kwargs):
 		super().compile(**kwargs)
-		self.loss_tracker = tf.keras.metrics.Mean(name="loss")
-		self.noise_loss_tracker = tf.keras.metrics.Mean(name="noise_loss")
+		self.loss_fn = tf.keras.losses.get(kwargs['loss'])
 
 	@property
 	def metrics(self):
@@ -213,7 +213,7 @@ class DDPM(Model):
 
 		t = tf.random.uniform(shape=[batch_size],
 		                      minval=0, maxval=self.timesteps,
-		                      dtype=tf.int64)
+		                      dtype=tf.int32)
 		noise = tf.random.normal(shape=images_shape, dtype=TF_DTYPE)
 
 		# Retrieve the current timestep for each batch, and reshape for broadcast
@@ -221,22 +221,12 @@ class DDPM(Model):
 		sqrt_one_minus_alpha_bar_t = tf.reshape(tf.gather(self.sqrt_one_minus_alpha_bar, t, axis=0), self.reshape_dim)
 		noised_image = sqrt_alpha_bar_t * images + sqrt_one_minus_alpha_bar_t * noise
 
-		# Check if condition is an input argument of the network
-		cond_kwargs = {}
-		if self.flag_condition:
-			cond_kwargs = {'condition': condition}
-
 		with tf.GradientTape() as tape:
-			prediction = self.call(noised_image, time=t, training=True, **cond_kwargs)
+			prediction = self.call({'x': noised_image, 'time': t, 'condition': condition}, training=True)
 			loss, noise_loss = self.compute_loss(y=noise, y_pred=prediction)
 
 		gradients = tape.gradient(loss, self.trainable_variables)
 		self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-
-		# Apply exponential moving average for stability
-		#  (https://www.tensorflow.org/api_docs/python/tf/train/ExponentialMovingAverage)
-		if self.ema is not None:
-			self.ema.apply(self.trainable_variables)
 
 		self.loss_tracker.update_state(loss)
 		self.noise_loss_tracker.update_state(noise_loss)
@@ -259,7 +249,7 @@ class DDPM(Model):
 
 		t = tf.random.uniform(shape=[batch_size],
 		                      minval=0, maxval=self.timesteps,
-		                      dtype=tf.int64)
+		                      dtype=tf.int32)
 		noise = tf.random.normal(shape=images_shape, dtype=TF_DTYPE)
 
 		# Retrieve the current timestep for each batch, and reshape for broadcast
@@ -267,12 +257,7 @@ class DDPM(Model):
 		sqrt_one_minus_alpha_bar_t = tf.reshape(tf.gather(self.sqrt_one_minus_alpha_bar, t, axis=0), self.reshape_dim)
 		noised_image = sqrt_alpha_bar_t * images + sqrt_one_minus_alpha_bar_t * noise
 
-		# Check if condition is an input argument of the network
-		cond_kwargs = {}
-		if self.flag_condition:
-			cond_kwargs = {'condition': condition}
-
-		prediction = self.call(noised_image, time=t, training=False, **cond_kwargs)
+		prediction = self.call({'x': noised_image, 'time': t, 'condition': condition}, training=False)
 		loss, noise_loss = self.compute_loss(y=noise, y_pred=prediction)
 
 		self.loss_tracker.update_state(loss)
@@ -290,7 +275,7 @@ class DDPM(Model):
 		alpha_bar_t = tf.reshape(tf.gather(self.alpha_bar, time, axis=0), self.reshape_dim)
 		sqrt_one_minus_alpha_bar_t = tf.reshape(tf.gather(
 			self.sqrt_one_minus_alpha_bar, time, axis=0), self.reshape_dim)
-		pred_noise = self.call(x_t, time=time, condition=condition, training=False)
+		pred_noise = self.call({'x': x_t, 'time': time, 'condition': condition}, training=False)
 
 		eps_coef = (1 - alpha_t) / sqrt_one_minus_alpha_bar_t
 		mean = (1 / tf.sqrt(alpha_t)) * (x_t - eps_coef * pred_noise)
@@ -332,7 +317,7 @@ class DDPM(Model):
 @tf.keras.utils.register_keras_serializable(package="CustomModels")
 class ImprovedDDPM(DDPM):
 	def __init__(self, lambda_vlb, parameterization='eps', **kwargs):
-		super().__init__(name='diffusion_model_learn_noise', **kwargs)
+		super().__init__(**kwargs)
 		self.lambda_vlb = lambda_vlb
 		self.parameterization = parameterization
 		self.eps_param_name_list = ['eps', 'epsilon']
@@ -349,11 +334,11 @@ class ImprovedDDPM(DDPM):
 		self.flag_learn_var = 'learn' in self.learn_variance.lower()
 		self.flag_ranged_var = 'ranged' in self.learn_variance.lower()
 
-		self.alpha_bar = np.cumprod(self.alpha, 0, dtype=NP_DTYPE)
-		self.alpha_bar_prev = np.concatenate((np.array([1.], dtype=NP_DTYPE),
+		self.alpha_bar = np.cumprod(self.alpha, 0, dtype=DTYPE)
+		self.alpha_bar_prev = np.concatenate((np.array([1.], dtype=DTYPE),
 		                                      self.alpha_bar[:-1]), axis=0)
-		self.sqrt_alpha_bar = np.sqrt(self.alpha_bar, dtype=NP_DTYPE)
-		self.sqrt_one_minus_alpha_bar = np.sqrt(1 - self.alpha_bar, dtype=NP_DTYPE)
+		self.sqrt_alpha_bar = np.sqrt(self.alpha_bar, dtype=DTYPE)
+		self.sqrt_one_minus_alpha_bar = np.sqrt(1 - self.alpha_bar, dtype=DTYPE)
 
 		# Added from IDDPM GitHub for learning variance
 		# https://github.com/openai/improved-diffusion/blob/main/improved_diffusion/gaussian_diffusion.py
@@ -369,9 +354,10 @@ class ImprovedDDPM(DDPM):
 		self.posterior_mean_coef2 = (1.0 - self.alpha_bar_prev) * np.sqrt(self.alpha) / \
 		                            (1.0 - self.alpha_bar)
 
+		self.lambda_vlb_loss_tracker = tf.keras.metrics.Mean(name="lambda_vlb_loss")
+
 	def compile(self, **kwargs):
 		super().compile(**kwargs)
-		self.lambda_vlb_loss_tracker = tf.keras.metrics.Mean(name="lambda_vlb_loss")
 
 	@property
 	def metrics(self):
@@ -459,7 +445,7 @@ class ImprovedDDPM(DDPM):
 				model_variance = tf.exp(model_log_variance)
 			else:
 				min_log = self.extract_params(self.posterior_log_variance_clipped, t)
-				max_log = self.extract_params(np.log(self.beta), t)
+				max_log = tf.math.log(self.extract_params(self.beta, t))
 				# The model_var_values is [-1, 1] for [min_var, max_var].
 				frac = (model_var_values + 1) / 2
 				model_log_variance = frac * max_log + (1 - frac) * min_log
@@ -467,7 +453,7 @@ class ImprovedDDPM(DDPM):
 			model_variance_tilde, model_log_variance_tilde = \
 				model_variance, model_log_variance
 		else:
-			model_variance, model_log_variance = self.beta, np.log(self.beta)
+			model_variance, model_log_variance = self.beta, tf.math.log(self.beta)
 			model_variance_tilde, model_log_variance_tilde = self.posterior_variance, \
 				self.posterior_log_variance_clipped,
 			model_variance = self.extract_params(model_variance, t)
@@ -557,7 +543,7 @@ class ImprovedDDPM(DDPM):
 
 		t = tf.random.uniform(shape=[batch_size],
 		                      minval=0, maxval=self.timesteps,
-		                      dtype=tf.int64)
+		                      dtype=tf.int32)
 		noise = tf.random.normal(shape=images_shape, dtype=TF_DTYPE)
 
 		# Retrieve the current timestep for each batch, and reshape for broadcast
@@ -574,21 +560,17 @@ class ImprovedDDPM(DDPM):
 		else:
 			target = noise
 
-		# Check if condition is an input argument of the network
-		cond_kwargs = {}
-		if self.flag_condition:
-			cond_kwargs = {'condition': condition}
-
 		with tf.GradientTape() as tape:
 			if self.flag_learn_var:
-				prediction, logvar = tf.split(self.call(noised_image, time=t, training=True, **cond_kwargs),
+				prediction, logvar = tf.split(self.call({'x': noised_image, 'time': t, 'condition': condition},
+				                                        training=True),
 				                              num_or_size_splits=2, axis=-1)
 				frozen_prediction = tf.stop_gradient(prediction)
 				frozen_output = tf.concat([frozen_prediction, logvar], axis=-1)
 				vlb = self.lambda_vlb * self._vb_terms_bpd(model_output=frozen_output,
 				                                           x_start=images, x_t=noised_image, t=t)
 			else:
-				prediction = self.call(noised_image, time=t, training=True, **cond_kwargs)
+				prediction = self.call({'x': noised_image, 'time': t, 'condition': condition}, training=True)
 				vlb = 0.
 			loss, noise_loss = self.compute_loss(y=target, y_pred=prediction)
 			loss = loss + vlb
@@ -608,10 +590,6 @@ class ImprovedDDPM(DDPM):
 					 "\nlen(grad == None)", grad_none)
 
 		self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-		# Apply exponential moving average for stability
-		#  (https://www.tensorflow.org/api_docs/python/tf/train/ExponentialMovingAverage)
-		if self.ema is not None:
-			self.ema.apply(self.trainable_variables)
 
 		self.loss_tracker.update_state(loss)
 		self.noise_loss_tracker.update_state(noise_loss)
@@ -633,7 +611,7 @@ class ImprovedDDPM(DDPM):
 
 		t = tf.random.uniform(shape=[batch_size],
 		                      minval=0, maxval=self.timesteps,
-		                      dtype=tf.int64)
+		                      dtype=tf.int32)
 		noise = tf.random.normal(shape=images_shape, dtype=TF_DTYPE)
 
 		# Retrieve the current timestep for each batch, and reshape for broadcast
@@ -650,20 +628,15 @@ class ImprovedDDPM(DDPM):
 		else:
 			target = noise
 
-		# Check if condition is an input argument of the network
-		cond_kwargs = {}
-		if self.flag_condition:
-			cond_kwargs = {'condition': condition}
-
 		if self.flag_learn_var:
-			prediction, logvar = tf.split(self.call(noised_image, time=t, training=False, **cond_kwargs),
+			prediction, logvar = tf.split(self.call({'x': noised_image, 'time': t, 'condition': condition}, training=False),
 			                              num_or_size_splits=2, axis=-1)
 			frozen_prediction = tf.stop_gradient(prediction)
 			frozen_output = tf.concat([frozen_prediction, logvar], axis=-1)
 			vlb = self.lambda_vlb * self._vb_terms_bpd(model_output=frozen_output,
 			                         x_start=images, x_t=noised_image, t=t)
 		else:
-			prediction = self.call(noised_image, time=t, training=False, **cond_kwargs)
+			prediction = self.call({'x': noised_image, 'time': t, 'condition': condition}, training=False)
 			vlb = 0.
 		loss, noise_loss = self.compute_loss(y=target, y_pred=prediction)
 		loss = loss + vlb
@@ -679,7 +652,7 @@ class ImprovedDDPM(DDPM):
 		"""Predicts x^{t-1} based on x^{t} using the DDPM model.
 		Use in a for loop from T to 1 to retrieve input from noise."""
 
-		pred_noise = self.call(x_t, time=time, condition=condition, training=False)
+		pred_noise = self.call({'x': x_t, 'time': time, 'condition': condition}, training=False)
 		z = tf.random.normal(shape=tf.shape(x_t), dtype=x_t.dtype)
 		out = self.p_mean_variance(model_output=pred_noise, x=x_t, t=time)
 		nonzero_mask = tf.cast(tf.where(time == 0, 0., 1.), TF_DTYPE)  # no noise when t == 0

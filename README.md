@@ -44,7 +44,9 @@ $ cd PET_posterior_distribution
 (See requirements.txt)
 ```
 
-> ✅ The repo was tested with **TensorFlow 2.10 + CUDA 11.8** on Linux and WSL2.
+> ✅ Code in the manuscript (IEEE TMI 2025) was originally implemented and tested on TensorFlow 2.10. The repo was modified and upgraded to work with **TensorFlow 2.19** on Linux and WSL2 on Jul-25-2025.
+
+**Note: the saved model in the ``25-07-14_16-35_improved_ddpm_f128_d4_p2_s1.0e-01`` directory was executed in TensorFlow 2.10, i.e., before updating the code for the 2.19 version. Backward compatibility is not guaranteed. New results with more MCMC reference samples and using Tensorflow 2.19 will be uploaded in the near future.** 
 
 ---
 

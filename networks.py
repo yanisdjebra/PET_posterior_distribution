@@ -1,4 +1,5 @@
 
+import os
 import tensorflow as tf
 from tensorflow.keras import Sequential
 from tensorflow.keras.layers import Layer
@@ -90,6 +91,94 @@ def kernel_init(scale, seed=1234):
     )
 
 
+class PeriodicModelCheckpoint(tf.keras.callbacks.ModelCheckpoint):
+    """
+    Save checkpoint after a number of epoch ``every_n_epochs``.
+    """
+    def __init__(self, *args, every_n_epochs=1, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.every_n_epochs = every_n_epochs
+    def on_epoch_end(self, epoch, logs=None):
+        if (epoch + 1) % self.every_n_epochs == 0:
+            super().on_epoch_end(epoch, logs)
+
+
+class SavedModelCheckpoint(tf.keras.callbacks.Callback):
+    """
+    Export a TF SavedModel every `every_n_epochs` with a 3-input signature
+    (x, time, condition) WITHOUT changing your model.call signature.
+    """
+    def __init__(self, root_dir, every_n_epochs=1, input_spec=None, options=None):
+        super().__init__()
+        self.root_dir = root_dir
+        self.every_n_epochs = every_n_epochs
+        self.input_spec = input_spec  # [x_spec, time_spec, cond_spec]
+        self.options = options
+
+    def on_epoch_end(self, epoch, logs=None):
+        if (epoch + 1) % self.every_n_epochs != 0:
+            return
+
+        export_dir = os.path.join(self.root_dir, f"cp_{epoch+1}")
+        os.makedirs(export_dir, exist_ok=True)
+
+        keras_model = self.model  # trackable object with variables
+
+        class ExportWrapper(tf.Module):
+            def __init__(self, model, specs):
+                super().__init__()
+                self.model = model  # <-- **TRACK the model/variables**
+
+                # Build the tf.function with the right signature **now**
+                @tf.function(input_signature=specs)
+                def serving(x, time, condition):
+                    return self.model(x, time, condition, training=False)
+
+                # Store the **ConcreteFunction**
+                self.serving = serving.get_concrete_function()
+
+        wrapper = ExportWrapper(keras_model, self.input_spec)
+
+        tf.saved_model.save(
+            wrapper,  # <-- save the wrapper, not the keras model
+            export_dir,
+            signatures={"serving_default": wrapper.serving},
+            options=self.options,
+        )
+
+        print(f"[SavedModelCheckpoint] Exported to {export_dir}")
+
+
+class WeightsCheckpoint(tf.keras.callbacks.Callback):
+    """
+    Save only the model weights every `every_n_epochs` epochs into
+    directories named `cp_{epoch}` inside `root_dir`.
+
+    Example layout:
+        root_dir/
+          cp_0001/weights.h5
+          cp_0005/weights.h5
+          ...
+    """
+    def __init__(self, root_dir, every_n_epochs=1, filename="ckpt.weights.h5", overwrite=True):
+        super().__init__()
+        self.root_dir = root_dir
+        self.every_n_epochs = every_n_epochs
+        self.filename = filename
+        self.overwrite = overwrite
+
+    def on_epoch_end(self, epoch, logs=None):
+        if (epoch + 1) % self.every_n_epochs != 0:
+            return
+        subdir = os.path.join(self.root_dir, f"cp_{epoch + 1}")
+        os.makedirs(subdir, exist_ok=True)
+        path = os.path.join(subdir, self.filename)
+        if (not self.overwrite) and tf.io.gfile.exists(path):
+            tf.print(f"[WeightsCheckpoint] Skipping existing {path}")
+            return
+        self.model.save_weights(path)
+        tf.print(f"[WeightsCheckpoint] Saved weights to {path}")
+
 @tf.keras.utils.register_keras_serializable(package="CustomLayers")
 class SinusoidalPosEmb(Layer):
     def __init__(self, dim, max_positions=10000.):
@@ -175,8 +264,8 @@ class LayerNorm(Layer):
         super(LayerNorm, self).__init__(**kwargs)
         self.eps = eps
 
-        self.g = tf.Variable(tf.ones([1, 1, 1, dim], dtype=tf.float64))
-        self.b = tf.Variable(tf.zeros([1, 1, 1, dim], dtype=tf.float64))
+        self.g = tf.Variable(tf.ones([1, 1, 1, dim], dtype=TF_DTYPE))
+        self.b = tf.Variable(tf.zeros([1, 1, 1, dim], dtype=TF_DTYPE))
 
     def call(self, x, training=True):
         var = tf.math.reduce_variance(x, axis=-1, keepdims=True)
@@ -211,7 +300,7 @@ class NormalizationLayer(Layer):
             self.mode = 'minmax'
         elif mean is not None:
             self.var_sub = mean
-            self.var_div = np.sqrt(var, dtype=NP_DTYPE) if var is not None else std
+            self.var_div = np.sqrt(var, dtype=DTYPE) if var is not None else std
             self.mode = 'std'
         else:
             raise ValueError('``min`` and ``max`` or ``mean`` and '
@@ -703,14 +792,14 @@ class UnetConditional(Layer):
             else:
                 if ('mean' in lower_keys) and ('var' in lower_keys or 'std' in lower_keys):
                     normalize_kwargs = {
-                        'mean': np.array(normalize_dict.get('mean'), dtype=NP_DTYPE),
-                        'var': np.array(normalize_dict.get('var', None), dtype=NP_DTYPE) if 'var' in lower_keys \
-                        else (np.array(normalize_dict.get('std', None), dtype=NP_DTYPE) ** 2)
+                        'mean': np.array(normalize_dict.get('mean'), dtype=DTYPE),
+                        'var': np.array(normalize_dict.get('var', None), dtype=DTYPE) if 'var' in lower_keys \
+                        else (np.array(normalize_dict.get('std', None), dtype=DTYPE) ** 2)
                     }
                 elif ('min' in lower_keys) and ('max' in lower_keys):
                     normalize_kwargs = {
-                        'min': np.array(normalize_dict.get('min'), dtype=NP_DTYPE),
-                        'max': np.array(normalize_dict.get('max'), dtype=NP_DTYPE)
+                        'min': np.array(normalize_dict.get('min'), dtype=DTYPE),
+                        'max': np.array(normalize_dict.get('max'), dtype=DTYPE)
                     }
                 else:
                     raise ValueError('Normalization method for {} not recognized. Normalization dict '
@@ -762,7 +851,7 @@ class UnetConditional(Layer):
             f_maxpool = getattr(nn, 'AveragePooling{}D'.format(self.ndim))
         f_upsamp = getattr(nn, 'UpSampling{}D'.format(ndim))
 
-        cond_emb_layer = [[nn.Dense(units=tf.reduce_prod(im_size)), GELU(),]]
+        cond_emb_layer = [[nn.Dense(units=np.prod(im_size)), GELU(),]]
         if self.encoder_cond is None:
             if isinstance(self.cond_params.get('load_model', None), str):
                 autoencoder_load = tf.keras.models.load_model(self.cond_params['load_model'])
@@ -803,7 +892,7 @@ class UnetConditional(Layer):
                 self.encoder_cond = tmp_layer
 
             elif self.cond_params['network_name'].lower() in 'mlp':
-                self.encoder_cond = [nn.Dense(units=tf.reduce_prod(im_size)), tf.nn.relu()]
+                self.encoder_cond = [nn.Dense(units=np.prod(im_size)), tf.nn.relu()]
             elif self.cond_params['network_name'].lower() in 'identity':
                 self.encoder_cond = [Identity(),]
             elif self.cond_params['network_name'].lower() not in ('encoder', 'mlp'):
@@ -827,7 +916,7 @@ class UnetConditional(Layer):
                     sin_emb, nn.Flatten() if self.cond_params.get('flag_flatten_input', True)
                     else Identity()] + cond_emb_layer[cond_i] + \
                     # nn.LayerNormalization(),
-                    [nn.Dense(units=tf.reduce_prod(im_size)),
+                    [nn.Dense(units=np.prod(im_size), dtype=TF_DTYPE),
                     nn.Reshape(im_size + (-1,))
                      ], name="cond_{}_embedding".format(cond_i)))
             self.cond_mlp_down.append(tmp_cond_layer)
@@ -870,7 +959,7 @@ class UnetConditional(Layer):
                     sin_emb, nn.Flatten() if self.cond_params.get('flag_flatten_input', True)
                     else Identity()] + cond_emb_layer[cond_i] + \
                     # nn.LayerNormalization(),
-                    [nn.Dense(units=tf.reduce_prod(im_size)),
+                    [nn.Dense(units=np.prod(im_size)),
                     nn.Reshape(im_size + (-1,))
                      ], name="cond_{}_embedding".format(cond_i)))
             self.cond_mlp_up.append(tmp_cond_layer)
@@ -921,7 +1010,7 @@ class UnetConditional(Layer):
         for di, (conv, pool, dropout) in enumerate(self.downs):
             # Apply MLP and Concatenate condition
             if time is not None:
-                time_cond = [self.cond_mlp_down[di][0](time, training=training),]
+                time_cond = [self.cond_mlp_down[di][0](tf.cast(time, TF_DTYPE), training=training),]
             else:
                 time_cond = []
             if condition is not None:
