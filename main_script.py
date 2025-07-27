@@ -32,7 +32,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
 tf.config.experimental.set_memory_growth(tf.config.list_physical_devices('GPU')[0], True)
 
-FLAG_XLA = False  # Deactivate XLA if tensorflow cannot find the cuda libraries
+FLAG_XLA = True  # Deactivate XLA if tensorflow cannot find the cuda libraries
 
 
 ## Get paths (gpu-node008 if on server, Dropbox else)
@@ -178,8 +178,8 @@ loss = 'MeanSquaredError'
 # DDPM/iDDPM
 diff_args = {
 	'timesteps': timesteps,
-	'noise_schedule': {#'beta_start': 1e-4, # Default values in DDPM class
-					   #'beta_end': 2e-2, # Default values in DDPM class
+	'noise_schedule': {#'beta_start': 1e-4, # Default values in DDPM class is 1e-4
+					   #'beta_end': 2e-2, # Default values in DDPM class is 2e-2
 					   'schedule_name': 'cosine'},
 	'lambda_vlb': 1e-1,
 	'ndim': 1,
@@ -328,7 +328,7 @@ save_posterior_res = True  # save inference results in .pik file
 flag_load_res = True  # load results instead of inference if .pik file available
 timesteps_model = getattr(diff_model, 'timesteps', None)
 make_png_period = range(period, epochs + period, period)
-sample_range = range(0, 2)
+sample_range = range(0, 10)
 
 # Params for plots
 hist_pred_color = 'royalblue'
@@ -782,8 +782,6 @@ for sample_plot in sample_range:
 															  epoch_i, km_obs['DVR'][0],
 															  km_obs['R1'][0], km_obs['k2p']))
 						fig_tmp.savefig(save_fig_cov_fname)
-					plt.close(fig_Cov)
-					plt.close(fig_Corr)
 					plt.close(fig_mu)
 					plt.close(fig_std)
 
