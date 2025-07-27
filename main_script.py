@@ -474,9 +474,10 @@ for sample_plot in sample_range:
 							var_mcmc_all = (mcmc_res[km_pred_str_i + '_mcmc'].
 											reshape(-1, mcmc_res[km_pred_str_i + '_mcmc'].shape[-1]))
 							var_all_list = [var_mcmc_all, var_pred_all]
+							str_method[0] = 'MCMC'
 						else:
 							var_mcmc_all = var_pred_all
-							str_method = str_method[1]
+							str_method[0] = str_method[1]
 							var_all_list = [var_pred_all,]
 
 						fig_all, ax_all = plt.subplots(int(np.ceil(np.sqrt(len(ROI_range_show)))),
